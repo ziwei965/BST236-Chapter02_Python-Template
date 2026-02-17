@@ -79,4 +79,4 @@ conda-meta/
 *.ipynb_checkpoints
 
 # Virtualenv specific
-.virtualenv/
+.virtualenv/*.html

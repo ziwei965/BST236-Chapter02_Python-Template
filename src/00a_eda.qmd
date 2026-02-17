@@ -1,0 +1,289 @@
+---
+title: "Exploratory Data Analysis: Boston Housing Dataset"
+author: "BST 236"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    code-tools: true
+    theme: cosmo
+    self-contained: true
+execute:
+  warning: false
+  message: false
+---
+
+## Introduction
+
+The Boston Housing dataset contains **506 observations** and **14 variables** describing housing in the Boston area. The target variable is **MEDV** (median value of owner-occupied homes in $1000s). The 13 predictor variables are:
+
+| Variable | Description |
+|----------|-------------|
+| CRIM | Per capita crime rate by town |
+| ZN | Proportion of residential land zoned for lots over 25,000 sq. ft. |
+| INDUS | Proportion of non-retail business acres per town |
+| CHAS | Charles River dummy variable (1 if tract bounds river; 0 otherwise) |
+| NOX | Nitric oxides concentration (parts per 10 million) |
+| RM | Average number of rooms per dwelling |
+| AGE | Proportion of owner-occupied units built prior to 1940 |
+| DIS | Weighted distances to five Boston employment centres |
+| RAD | Index of accessibility to radial highways |
+| TAX | Full-value property-tax rate per $10,000 |
+| PTRATIO | Pupil-teacher ratio by town |
+| B | 1000(Bk - 0.63)^2 where Bk is the proportion of Black residents by town |
+| LSTAT | Percentage lower status of the population |
+
+## Setup
+
+```{python}
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import yaml
+
+# Load config
+with open('config/config.yaml', 'r') as f:
+    config = yaml.safe_load(f)
+
+# Visualization settings
+sns.set_style(config['visualization']['style'])
+plt.rcParams['font.size'] = config['visualization']['font_size']
+
+# Load data
+df = pd.read_csv('../' + config['data']['processed_data'])
+print(f"Dataset loaded: {df.shape[0]} rows, {df.shape[1]} columns")
+```
+
+## Basic Data Overview
+
+### Shape and Data Types
+
+```{python}
+print(f"Shape: {df.shape}")
+print(f"\nData types:\n{df.dtypes}")
+```
+
+### First Few Rows
+
+```{python}
+df.head(10)
+```
+
+### Summary Statistics
+
+```{python}
+df.describe().round(2)
+```
+
+### Missing Values
+
+```{python}
+missing = df.isnull().sum()
+print(f"Total missing values: {missing.sum()}")
+if missing.sum() > 0:
+    print(missing[missing > 0])
+else:
+    print("No missing values in any column.")
+```
+
+## Univariate Analysis
+
+### Histograms with KDE
+
+```{python}
+#| fig-width: 14
+#| fig-height: 12
+fig, axes = plt.subplots(4, 4, figsize=(14, 12))
+axes = axes.flatten()
+
+for i, col in enumerate(df.columns):
+    sns.histplot(df[col], kde=True, ax=axes[i], color='steelblue', edgecolor='white')
+    axes[i].set_title(col, fontsize=11, fontweight='bold')
+    axes[i].set_xlabel('')
+
+# Hide unused subplots
+for j in range(len(df.columns), len(axes)):
+    axes[j].set_visible(False)
+
+plt.suptitle('Distribution of All Variables', fontsize=14, fontweight='bold', y=1.01)
+plt.tight_layout()
+plt.show()
+```
+
+### Box Plots
+
+```{python}
+#| fig-width: 14
+#| fig-height: 12
+fig, axes = plt.subplots(4, 4, figsize=(14, 12))
+axes = axes.flatten()
+
+for i, col in enumerate(df.columns):
+    sns.boxplot(y=df[col], ax=axes[i], color='steelblue')
+    axes[i].set_title(col, fontsize=11, fontweight='bold')
+
+for j in range(len(df.columns), len(axes)):
+    axes[j].set_visible(False)
+
+plt.suptitle('Box Plots for Outlier Detection', fontsize=14, fontweight='bold', y=1.01)
+plt.tight_layout()
+plt.show()
+```
+
+## Bivariate Analysis
+
+### Correlation Heatmap
+
+```{python}
+#| fig-width: 12
+#| fig-height: 10
+corr = df.corr()
+
+# Lower triangle mask
+mask = np.triu(np.ones_like(corr, dtype=bool))
+
+fig, ax = plt.subplots(figsize=(12, 10))
+sns.heatmap(
+    corr, mask=mask, annot=True, fmt='.2f',
+    cmap='RdBu_r', center=0, vmin=-1, vmax=1,
+    square=True, linewidths=0.5, ax=ax,
+    cbar_kws={'shrink': 0.8}
+)
+ax.set_title('Correlation Matrix (Lower Triangle)', fontsize=14, fontweight='bold')
+plt.tight_layout()
+plt.show()
+```
+
+### Scatter Plots: Each Feature vs MEDV
+
+```{python}
+#| fig-width: 16
+#| fig-height: 16
+features = [c for c in df.columns if c != 'MEDV']
+
+fig, axes = plt.subplots(4, 4, figsize=(16, 16))
+axes = axes.flatten()
+
+for i, feat in enumerate(features):
+    sns.regplot(x=df[feat], y=df['MEDV'], ax=axes[i],
+                scatter_kws={'alpha': 0.4, 's': 15, 'color': 'steelblue'},
+                line_kws={'color': 'red', 'linewidth': 1.5})
+    r = df[feat].corr(df['MEDV'])
+    axes[i].set_title(f'{feat} (r={r:.2f})', fontsize=11, fontweight='bold')
+    axes[i].set_xlabel('')
+    axes[i].set_ylabel('MEDV' if i % 4 == 0 else '')
+
+for j in range(len(features), len(axes)):
+    axes[j].set_visible(False)
+
+plt.suptitle('Feature vs MEDV with Regression Lines', fontsize=14, fontweight='bold', y=1.01)
+plt.tight_layout()
+plt.show()
+```
+
+## Multivariate Analysis
+
+### Pairplot of Top 5 Correlated Features with MEDV
+
+```{python}
+#| fig-width: 14
+#| fig-height: 14
+corr_with_medv = corr['MEDV'].drop('MEDV').abs().sort_values(ascending=False)
+top5 = corr_with_medv.head(5).index.tolist()
+
+print(f"Top 5 features most correlated with MEDV: {top5}")
+
+pairplot_cols = top5 + ['MEDV']
+g = sns.pairplot(df[pairplot_cols], diag_kind='kde',
+                 plot_kws={'alpha': 0.4, 's': 15, 'color': 'steelblue'},
+                 diag_kws={'color': 'steelblue'})
+g.figure.suptitle('Pairplot: Top 5 Features + MEDV', fontsize=14, fontweight='bold', y=1.01)
+plt.show()
+```
+
+## Key Insights
+
+### Highly Correlated Feature Pairs (|r| > 0.7)
+
+```{python}
+# Find pairs with |r| > 0.7 (excluding self-correlations)
+threshold = 0.7
+high_corr = []
+for i in range(len(corr.columns)):
+    for j in range(i + 1, len(corr.columns)):
+        if abs(corr.iloc[i, j]) > threshold:
+            high_corr.append({
+                'Feature 1': corr.columns[i],
+                'Feature 2': corr.columns[j],
+                'Correlation': round(corr.iloc[i, j], 3)
+            })
+
+high_corr_df = pd.DataFrame(high_corr).sort_values('Correlation', key=abs, ascending=False)
+print(f"Feature pairs with |r| > {threshold}:\n")
+if len(high_corr_df) > 0:
+    print(high_corr_df.to_string(index=False))
+else:
+    print("None found.")
+```
+
+### Feature Correlations with MEDV (Ranked by |r|)
+
+```{python}
+medv_corr = corr['MEDV'].drop('MEDV').sort_values(key=abs, ascending=False)
+medv_corr_df = pd.DataFrame({
+    'Feature': medv_corr.index,
+    'Correlation with MEDV': medv_corr.values.round(3),
+    '|r|': abs(medv_corr.values).round(3)
+})
+print(medv_corr_df.to_string(index=False))
+```
+
+### Skewed Distributions (|Skewness| > 1)
+
+```{python}
+skewness = df.skew().sort_values(key=abs, ascending=False)
+skewed = skewness[abs(skewness) > 1]
+skew_df = pd.DataFrame({
+    'Variable': skewed.index,
+    'Skewness': skewed.values.round(3)
+})
+print(f"Variables with |skewness| > 1:\n")
+if len(skew_df) > 0:
+    print(skew_df.to_string(index=False))
+else:
+    print("None found.")
+```
+
+### Outlier Counts (IQR Method)
+
+```{python}
+outlier_counts = {}
+for col in df.columns:
+    Q1 = df[col].quantile(0.25)
+    Q3 = df[col].quantile(0.75)
+    IQR = Q3 - Q1
+    lower = Q1 - 1.5 * IQR
+    upper = Q3 + 1.5 * IQR
+    n_outliers = ((df[col] < lower) | (df[col] > upper)).sum()
+    outlier_counts[col] = n_outliers
+
+outlier_df = pd.DataFrame({
+    'Variable': outlier_counts.keys(),
+    'Outlier Count': outlier_counts.values()
+}).sort_values('Outlier Count', ascending=False)
+
+print("Outlier counts per variable (IQR method):\n")
+print(outlier_df.to_string(index=False))
+```
+
+## Summary
+
+This EDA reveals several important characteristics of the Boston Housing dataset:
+
+- **No missing values** — the dataset is complete and ready for modeling.
+- **LSTAT** and **RM** are the two features most strongly correlated with MEDV, suggesting they are likely to be important predictors.
+- Several feature pairs exhibit high collinearity (e.g., RAD–TAX, DIS–AGE), which may affect linear models.
+- Multiple variables show significant skewness (e.g., CRIM, ZN, B), indicating potential benefit from log or power transformations.
+- The IQR method identifies outliers in most variables, with CRIM and B showing the highest counts.
